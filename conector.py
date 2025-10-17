@@ -5,13 +5,13 @@ from io import StringIO
 import os
 
 app = Flask(_name_)
-
+#postgresql://iotbd:SoosIOT@52.90.165.189:5432/iotbd
 # PostgreSQL connection parameters
-DB_HOST = os.getenv('DB_HOST', '107.22.69.183')
+DB_HOST = os.getenv('DB_HOST', '52.90.165.189')
 DB_PORT = os.getenv('DB_PORT', '5432')
 DB_NAME = os.getenv('DB_NAME', 'iotbd')
 DB_USER = os.getenv('DB_USER', 'iotbd')
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'rre7E9k24J1Z')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'SoosIOT')
 
 # Initialize PostgreSQL database
 def init_db():
