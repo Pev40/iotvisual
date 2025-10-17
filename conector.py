@@ -4,7 +4,7 @@ import csv
 from io import StringIO
 import os
 
-app = Flask(_name_)
+app = Flask(__name__)
 #postgresql://iotbd:SoosIOT@52.90.165.189:5432/iotbd
 # PostgreSQL connection parameters
 DB_HOST = os.getenv('DB_HOST', '52.90.165.189')
@@ -80,6 +80,6 @@ def receive_data():
     except Exception as e:
         return f"Error: {str(e)}", 500
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     #init_db()
     app.run(host='0.0.0.0', port=5000)

@@ -30,8 +30,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --no-warn-script-location -r requirements.txt
 
 # Copiar código fuente
-COPY data_analyzer_postgres.py ./data_analyzer.py
-COPY config.py .
+COPY conector.py .
 
 # Crear directorios y dar permisos
 RUN mkdir -p /app/results /app/logs && chown -R appuser:appuser /app
@@ -39,5 +38,8 @@ RUN mkdir -p /app/results /app/logs && chown -R appuser:appuser /app
 # Cambiar a usuario no-root
 USER appuser
 
-# Comando por defecto (mantener contenedor activo)
-CMD ["tail", "-f", "/dev/null"]
+# Exponer puerto
+EXPOSE 5000
+
+# Comando por defecto
+CMD ["python", "conector.py"]
