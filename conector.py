@@ -113,11 +113,26 @@ def receive_data():
         
         # Get CSV data from POST request
         try:
+            # Log de headers para diagnóstico
+            logger.info(f"📋 Headers recibidos: {dict(request.headers)}")
+            logger.info(f"📏 Content-Length: {request.content_length}")
+            logger.info(f"📝 Content-Type: {request.content_type}")
+            sys.stdout.flush()
+            
             logger.info("🔄 Intentando leer request.data...")
             sys.stdout.flush()
             
-            # Intentar con get_data() que es más confiable
-            raw_data = request.get_data()
+            # Método 1: Si hay Content-Length, leer esa cantidad exacta
+            if request.content_length and request.content_length > 0:
+                logger.info(f"📏 Leyendo {request.content_length} bytes específicos...")
+                sys.stdout.flush()
+                raw_data = request.stream.read(request.content_length)
+            else:
+                # Método 2: Leer todo con get_data
+                logger.info("📦 Leyendo con get_data()...")
+                sys.stdout.flush()
+                raw_data = request.get_data(cache=False, as_text=False)
+            
             logger.info(f"📦 request.data obtenido exitosamente!")
             sys.stdout.flush()
             
