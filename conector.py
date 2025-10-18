@@ -119,21 +119,41 @@ def receive_data():
             logger.info(f"📝 Content-Type: {request.content_type}")
             sys.stdout.flush()
             
-            logger.info("🔄 Intentando leer request.data...")
+            logger.info("🔄 Intentando leer datos en chunks...")
             sys.stdout.flush()
             
-            # Método 1: Si hay Content-Length, leer esa cantidad exacta
+            # Leer datos en chunks para evitar bloqueo
             if request.content_length and request.content_length > 0:
-                logger.info(f"📏 Leyendo {request.content_length} bytes específicos...")
+                logger.info(f"📦 Leyendo {request.content_length} bytes en chunks...")
                 sys.stdout.flush()
-                raw_data = request.stream.read(request.content_length)
+                
+                chunks = []
+                bytes_to_read = request.content_length
+                chunk_size = 8192  # 8KB chunks
+                bytes_read = 0
+                
+                while bytes_read < bytes_to_read:
+                    chunk_to_read = min(chunk_size, bytes_to_read - bytes_read)
+                    chunk = request.stream.read(chunk_to_read)
+                    if not chunk:
+                        logger.warning(f"⚠️ Stream terminó prematuramente en {bytes_read}/{bytes_to_read} bytes")
+                        sys.stdout.flush()
+                        break
+                    chunks.append(chunk)
+                    bytes_read += len(chunk)
+                    if bytes_read % (chunk_size * 4) == 0:  # Log cada 32KB
+                        logger.info(f"📊 Progreso: {bytes_read}/{bytes_to_read} bytes ({100*bytes_read//bytes_to_read}%)")
+                        sys.stdout.flush()
+                
+                raw_data = b''.join(chunks)
+                logger.info(f"✅ Lectura completa: {len(raw_data)} bytes")
+                sys.stdout.flush()
             else:
-                # Método 2: Leer todo con get_data
-                logger.info("📦 Leyendo con get_data()...")
+                logger.info("📦 Sin Content-Length, usando request.data...")
                 sys.stdout.flush()
-                raw_data = request.get_data(cache=False, as_text=False)
+                raw_data = request.data
             
-            logger.info(f"📦 request.data obtenido exitosamente!")
+            logger.info(f"📦 Datos obtenidos exitosamente!")
             sys.stdout.flush()
             
             logger.info(f"📏 Tamaño raw: {len(raw_data)} bytes, tipo: {type(raw_data)}")
@@ -281,4 +301,5 @@ if __name__ == '__main__':
     #init_db()
     logger.info("🚀 Iniciando servidor Flask en puerto 5000")
     logger.info("📡 Esperando datos en POST /freefall")
-    app.run(host='0.0.0.0', port=5000)
+    logger.info("⚙️  Modo threaded habilitado para mejor manejo de conexiones")
+    app.run(host='0.0.0.0', port=5000, threaded=True)
