@@ -27,7 +27,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY requirements.txt .
 
 # Actualizar pip y instalar dependencias Python como root (antes de cambiar de usuario)
-RUN pip install --upgrade pip && \
+RUN pip install --root-user-action=ignore --upgrade pip && \
     pip install --root-user-action=ignore --no-cache-dir --no-warn-script-location -r requirements.txt
 
 # Copiar código fuente
