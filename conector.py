@@ -13,6 +13,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Configurar logging de Flask
+@app.after_request
+def after_request(response):
+    logger.info(f"📤 Respuesta: {response.status} - {request.method} {request.path}")
+    return response
+
 #postgresql://iotbd:SoosIOT@52.90.165.189:5432/iotbd
 # PostgreSQL connection parameters
 DB_HOST = os.getenv('DB_HOST', '52.90.165.189')
@@ -90,35 +97,66 @@ def health():
 
 @app.route('/freefall', methods=['POST'])
 def receive_data():
+    conn = None
     try:
         client_ip = request.remote_addr
         logger.info(f"📥 Recibiendo datos en /freefall desde {client_ip}")
         
         # Get CSV data from POST request
-        csv_data = request.data.decode('utf-8')
-        logger.info(f"📊 Tamaño de datos recibidos: {len(csv_data)} bytes")
+        try:
+            csv_data = request.data.decode('utf-8')
+            logger.info(f"📊 Tamaño de datos recibidos: {len(csv_data)} bytes")
+            logger.info(f"🔍 Primeros 200 caracteres: {csv_data[:200]}")
+        except Exception as e:
+            logger.error(f"❌ Error al decodificar datos: {str(e)}")
+            return f"Error al decodificar datos: {str(e)}", 400
+        
+        # Verificar que hay datos
+        if not csv_data or len(csv_data) == 0:
+            logger.warning("⚠️ No se recibieron datos")
+            return "No data received", 400
         
         csv_reader = csv.reader(StringIO(csv_data))
         
         # Connect to PostgreSQL database
         logger.info("🔌 Conectando a PostgreSQL...")
-        conn = psycopg2.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD
-        )
-        c = conn.cursor()
-        logger.info("✅ Conexión exitosa a la base de datos")
+        try:
+            conn = psycopg2.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                connect_timeout=5
+            )
+            c = conn.cursor()
+            logger.info("✅ Conexión exitosa a la base de datos")
+        except Exception as e:
+            logger.error(f"❌ Error conectando a PostgreSQL: {str(e)}")
+            return f"Database connection error: {str(e)}", 500
         
         # Skip header row
-        next(csv_reader)
+        try:
+            next(csv_reader)
+            logger.info("📋 Header del CSV procesado")
+        except StopIteration:
+            logger.warning("⚠️ CSV vacío o sin header")
+            if conn:
+                conn.close()
+            return "Empty CSV", 400
         
         # Insert each row into the database
         row_count = 0
-        for row in csv_reader:
-            if len(row) == 11:  # Ensure correct number of columns
+        skipped_rows = 0
+        error_rows = []
+        
+        for idx, row in enumerate(csv_reader, start=2):  # start=2 porque header es línea 1
+            if len(row) != 11:
+                logger.warning(f"⚠️ Fila {idx} omitida: tiene {len(row)} columnas en lugar de 11")
+                skipped_rows += 1
+                continue
+            
+            try:
                 c.execute('''INSERT INTO freefall_data (
                     session_id, timestamp, accelX, accelY, accelZ,
                     gyroX, gyroY, gyroZ, posX, posY, posZ
@@ -130,14 +168,33 @@ def receive_data():
                     float(row[8]), float(row[9]), float(row[10])
                 ))
                 row_count += 1
+            except Exception as e:
+                logger.error(f"❌ Error insertando fila {idx}: {str(e)} - Datos: {row}")
+                error_rows.append(idx)
         
         conn.commit()
         conn.close()
         
-        logger.info(f"✅ {row_count} filas insertadas exitosamente en la base de datos")
-        return "Data stored successfully", 200
+        logger.info(f"✅ {row_count} filas insertadas exitosamente")
+        if skipped_rows > 0:
+            logger.warning(f"⚠️ {skipped_rows} filas omitidas (columnas incorrectas)")
+        if error_rows:
+            logger.error(f"❌ Errores en filas: {error_rows}")
+        
+        return {
+            "status": "success",
+            "rows_inserted": row_count,
+            "rows_skipped": skipped_rows,
+            "rows_with_errors": len(error_rows)
+        }, 200
+        
     except Exception as e:
-        logger.error(f"❌ Error al procesar datos: {str(e)}")
+        logger.error(f"❌ Error inesperado: {str(e)}", exc_info=True)
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
         return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
