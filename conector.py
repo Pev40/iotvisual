@@ -47,10 +47,46 @@ def init_db():
     conn.commit()
     conn.close()
 
+@app.route('/', methods=['GET'])
+def index():
+    return {
+        "service": "IoT Visual API",
+        "version": "1.0.0",
+        "endpoints": {
+            "POST /freefall": "Recibir datos de sensores (CSV)",
+            "GET /health": "Verificar estado del servicio y base de datos"
+        }
+    }, 200
+
 @app.route('/health', methods=['GET'])
 def health():
     logger.info("🏥 Health check solicitado")
-    return {"status": "ok", "message": "Servidor funcionando correctamente"}, 200
+    
+    health_status = {
+        "status": "ok",
+        "service": "iotvisual-api",
+        "database": "disconnected"
+    }
+    
+    # Verificar conexión a PostgreSQL
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            connect_timeout=3
+        )
+        conn.close()
+        health_status["database"] = "connected"
+        logger.info("✅ Health check: Base de datos OK")
+        return health_status, 200
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["database_error"] = str(e)
+        logger.error(f"❌ Health check: Error en base de datos - {str(e)}")
+        return health_status, 503
 
 @app.route('/freefall', methods=['POST'])
 def receive_data():
