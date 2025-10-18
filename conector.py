@@ -5,12 +5,20 @@ from io import StringIO
 import os
 import logging
 
-# Configurar logging
+# Configurar logging con flush inmediato
+import sys
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout,
+    force=True
 )
 logger = logging.getLogger(__name__)
+
+# Forzar flush inmediato de todos los logs
+for handler in logging.root.handlers:
+    handler.setLevel(logging.INFO)
+    handler.flush = lambda: sys.stdout.flush()
 
 app = Flask(__name__)
 
@@ -101,25 +109,50 @@ def receive_data():
     try:
         client_ip = request.remote_addr
         logger.info(f"📥 Recibiendo datos en /freefall desde {client_ip}")
+        sys.stdout.flush()
         
         # Get CSV data from POST request
         try:
-            csv_data = request.data.decode('utf-8')
+            logger.info("🔄 Intentando leer request.data...")
+            sys.stdout.flush()
+            
+            raw_data = request.data
+            logger.info(f"📦 request.data obtenido, tipo: {type(raw_data)}, tamaño: {len(raw_data)} bytes")
+            sys.stdout.flush()
+            
+            logger.info("🔄 Intentando decodificar UTF-8...")
+            sys.stdout.flush()
+            
+            csv_data = raw_data.decode('utf-8')
+            logger.info(f"✅ Decodificación exitosa")
+            sys.stdout.flush()
+            
             logger.info(f"📊 Tamaño de datos recibidos: {len(csv_data)} bytes")
             logger.info(f"🔍 Primeros 200 caracteres: {csv_data[:200]}")
+            sys.stdout.flush()
         except Exception as e:
             logger.error(f"❌ Error al decodificar datos: {str(e)}")
+            sys.stdout.flush()
+            import traceback
+            logger.error(traceback.format_exc())
+            sys.stdout.flush()
             return f"Error al decodificar datos: {str(e)}", 400
         
         # Verificar que hay datos
         if not csv_data or len(csv_data) == 0:
             logger.warning("⚠️ No se recibieron datos")
+            sys.stdout.flush()
             return "No data received", 400
         
+        logger.info("📋 Creando CSV reader...")
+        sys.stdout.flush()
         csv_reader = csv.reader(StringIO(csv_data))
+        logger.info("✅ CSV reader creado")
+        sys.stdout.flush()
         
         # Connect to PostgreSQL database
         logger.info("🔌 Conectando a PostgreSQL...")
+        sys.stdout.flush()
         try:
             conn = psycopg2.connect(
                 host=DB_HOST,
@@ -131,21 +164,32 @@ def receive_data():
             )
             c = conn.cursor()
             logger.info("✅ Conexión exitosa a la base de datos")
+            sys.stdout.flush()
         except Exception as e:
             logger.error(f"❌ Error conectando a PostgreSQL: {str(e)}")
+            sys.stdout.flush()
+            import traceback
+            logger.error(traceback.format_exc())
+            sys.stdout.flush()
             return f"Database connection error: {str(e)}", 500
         
         # Skip header row
+        logger.info("📋 Procesando header del CSV...")
+        sys.stdout.flush()
         try:
             next(csv_reader)
-            logger.info("📋 Header del CSV procesado")
+            logger.info("✅ Header del CSV procesado")
+            sys.stdout.flush()
         except StopIteration:
             logger.warning("⚠️ CSV vacío o sin header")
+            sys.stdout.flush()
             if conn:
                 conn.close()
             return "Empty CSV", 400
         
         # Insert each row into the database
+        logger.info("🔄 Iniciando inserción de filas...")
+        sys.stdout.flush()
         row_count = 0
         skipped_rows = 0
         error_rows = []
@@ -172,14 +216,19 @@ def receive_data():
                 logger.error(f"❌ Error insertando fila {idx}: {str(e)} - Datos: {row}")
                 error_rows.append(idx)
         
+        logger.info(f"💾 Haciendo commit de {row_count} filas...")
+        sys.stdout.flush()
         conn.commit()
         conn.close()
+        logger.info("✅ Commit exitoso, conexión cerrada")
+        sys.stdout.flush()
         
         logger.info(f"✅ {row_count} filas insertadas exitosamente")
         if skipped_rows > 0:
             logger.warning(f"⚠️ {skipped_rows} filas omitidas (columnas incorrectas)")
         if error_rows:
             logger.error(f"❌ Errores en filas: {error_rows}")
+        sys.stdout.flush()
         
         return {
             "status": "success",
@@ -190,6 +239,10 @@ def receive_data():
         
     except Exception as e:
         logger.error(f"❌ Error inesperado: {str(e)}", exc_info=True)
+        sys.stdout.flush()
+        import traceback
+        logger.error(traceback.format_exc())
+        sys.stdout.flush()
         if conn:
             try:
                 conn.close()
