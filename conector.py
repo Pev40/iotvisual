@@ -38,29 +38,53 @@ DB_PASSWORD = os.getenv('DB_PASSWORD', 'SoosIOT')
 
 # Initialize PostgreSQL database
 def init_db():
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD
-    )
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS freefall_data (
-        session_id INTEGER,
-        timestamp BIGINT,
-        accelX REAL,
-        accelY REAL,
-        accelZ REAL,
-        gyroX REAL,
-        gyroY REAL,
-        gyroZ REAL,
-        posX REAL,
-        posY REAL,
-        posZ REAL
-    )''')
-    conn.commit()
-    conn.close()
+    try:
+        logger.info("🔧 Inicializando base de datos...")
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        c = conn.cursor()
+        
+        # Crear tabla si no existe
+        c.execute('''CREATE TABLE IF NOT EXISTS freefall_data (
+            session_id INTEGER,
+            timestamp BIGINT,
+            accelX REAL,
+            accelY REAL,
+            accelZ REAL,
+            gyroX REAL,
+            gyroY REAL,
+            gyroZ REAL,
+            posX REAL,
+            posY REAL,
+            posZ REAL
+        )''')
+        conn.commit()
+        
+        # Verificar esquema de la tabla
+        c.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'freefall_data'
+            ORDER BY ordinal_position
+        """)
+        columns = c.fetchall()
+        logger.info("📋 Esquema de tabla freefall_data:")
+        for col_name, col_type in columns:
+            logger.info(f"   - {col_name}: {col_type}")
+        
+        conn.close()
+        logger.info("✅ Base de datos inicializada correctamente")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error inicializando base de datos: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 @app.route('/', methods=['GET'])
 def index():
@@ -258,16 +282,29 @@ def receive_data():
                     float(row[5]), float(row[6]), float(row[7]),
                     float(row[8]), float(row[9]), float(row[10])
                 ))
+                # Commit cada fila individualmente para evitar que un error aborte todas
+                conn.commit()
                 row_count += 1
             except Exception as e:
-                logger.error(f"❌ Error insertando fila {idx}: {str(e)} - Datos: {row}")
+                # Rollback de la transacción abortada
+                conn.rollback()
+                error_msg = str(e)
+                logger.error(f"❌ Error insertando fila {idx}: {error_msg}")
+                logger.error(f"   Datos de la fila: {row}")
+                # Si es el primer error, mostrar más detalles
+                if len(error_rows) == 0:
+                    logger.error(f"   ⚠️ PRIMER ERROR - Detalles completos:")
+                    logger.error(f"   session_id={row[0]} ({type(row[0])})")
+                    logger.error(f"   timestamp={row[1]} ({type(row[1])})")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                sys.stdout.flush()
                 error_rows.append(idx)
         
-        logger.info(f"💾 Haciendo commit de {row_count} filas...")
+        logger.info(f"💾 Cerrando conexión...")
         sys.stdout.flush()
-        conn.commit()
         conn.close()
-        logger.info("✅ Commit exitoso, conexión cerrada")
+        logger.info("✅ Conexión cerrada")
         sys.stdout.flush()
         
         logger.info(f"✅ {row_count} filas insertadas exitosamente")
@@ -298,8 +335,12 @@ def receive_data():
         return f"Error: {str(e)}", 500
 
 if __name__ == '__main__':
-    #init_db()
-    logger.info("🚀 Iniciando servidor Flask en puerto 5000")
-    logger.info("📡 Esperando datos en POST /freefall")
-    logger.info("⚙️  Modo threaded habilitado para mejor manejo de conexiones")
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    # Inicializar base de datos
+    if init_db():
+        logger.info("🚀 Iniciando servidor Flask en puerto 5000")
+        logger.info("📡 Esperando datos en POST /freefall")
+        logger.info("⚙️  Modo threaded habilitado para mejor manejo de conexiones")
+        app.run(host='0.0.0.0', port=5000, threaded=True)
+    else:
+        logger.error("❌ No se pudo inicializar la base de datos. Abortando.")
+        sys.exit(1)
