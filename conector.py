@@ -49,34 +49,85 @@ def init_db():
         )
         c = conn.cursor()
         
-        # Crear tabla si no existe
-        c.execute('''CREATE TABLE IF NOT EXISTS freefall_data (
-            session_id INTEGER,
-            timestamp BIGINT,
-            accelX REAL,
-            accelY REAL,
-            accelZ REAL,
-            gyroX REAL,
-            gyroY REAL,
-            gyroZ REAL,
-            posX REAL,
-            posY REAL,
-            posZ REAL
-        )''')
-        conn.commit()
-        
-        # Verificar esquema de la tabla
+        # Verificar si la tabla existe y su esquema
         c.execute("""
             SELECT column_name, data_type 
             FROM information_schema.columns 
             WHERE table_name = 'freefall_data'
             ORDER BY ordinal_position
         """)
-        columns = c.fetchall()
-        logger.info("📋 Esquema de tabla freefall_data:")
-        for col_name, col_type in columns:
-            logger.info(f"   - {col_name}: {col_type}")
+        existing_columns = c.fetchall()
         
+        required_columns = {
+            'session_id': 'integer',
+            'timestamp': 'bigint',
+            'accelx': 'real',
+            'accely': 'real',
+            'accelz': 'real',
+            'gyrox': 'real',
+            'gyroy': 'real',
+            'gyroz': 'real',
+            'posx': 'real',
+            'posy': 'real',
+            'posz': 'real'
+        }
+        
+        if existing_columns:
+            logger.info("📋 Esquema actual de tabla freefall_data:")
+            existing_col_names = set()
+            for col_name, col_type in existing_columns:
+                logger.info(f"   - {col_name}: {col_type}")
+                existing_col_names.add(col_name.lower())
+            
+            # Verificar si falta alguna columna requerida
+            missing_columns = set(required_columns.keys()) - existing_col_names
+            
+            if missing_columns:
+                logger.warning(f"⚠️ Columnas faltantes: {missing_columns}")
+                logger.warning("⚠️ La tabla tiene un esquema incompatible")
+                logger.warning("🔄 Se recreará la tabla...")
+                
+                # Hacer backup de la tabla y recrearla
+                c.execute("DROP TABLE IF EXISTS freefall_data_old")
+                c.execute("ALTER TABLE freefall_data RENAME TO freefall_data_old")
+                logger.info("✅ Tabla antigua respaldada como freefall_data_old")
+                
+                # Crear nueva tabla con esquema correcto
+                c.execute('''CREATE TABLE freefall_data (
+                    session_id INTEGER,
+                    timestamp BIGINT,
+                    accelX REAL,
+                    accelY REAL,
+                    accelZ REAL,
+                    gyroX REAL,
+                    gyroY REAL,
+                    gyroZ REAL,
+                    posX REAL,
+                    posY REAL,
+                    posZ REAL
+                )''')
+                logger.info("✅ Nueva tabla creada con esquema correcto")
+            else:
+                logger.info("✅ Esquema de tabla correcto")
+        else:
+            # Tabla no existe, crearla
+            logger.info("📝 Creando tabla freefall_data...")
+            c.execute('''CREATE TABLE freefall_data (
+                session_id INTEGER,
+                timestamp BIGINT,
+                accelX REAL,
+                accelY REAL,
+                accelZ REAL,
+                gyroX REAL,
+                gyroY REAL,
+                gyroZ REAL,
+                posX REAL,
+                posY REAL,
+                posZ REAL
+            )''')
+            logger.info("✅ Tabla creada exitosamente")
+        
+        conn.commit()
         conn.close()
         logger.info("✅ Base de datos inicializada correctamente")
         return True
