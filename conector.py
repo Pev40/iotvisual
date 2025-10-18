@@ -116,20 +116,32 @@ def receive_data():
             logger.info("🔄 Intentando leer request.data...")
             sys.stdout.flush()
             
-            raw_data = request.data
-            logger.info(f"📦 request.data obtenido, tipo: {type(raw_data)}, tamaño: {len(raw_data)} bytes")
+            # Intentar con get_data() que es más confiable
+            raw_data = request.get_data()
+            logger.info(f"📦 request.data obtenido exitosamente!")
+            sys.stdout.flush()
+            
+            logger.info(f"📏 Tamaño raw: {len(raw_data)} bytes, tipo: {type(raw_data)}")
             sys.stdout.flush()
             
             logger.info("🔄 Intentando decodificar UTF-8...")
             sys.stdout.flush()
             
-            csv_data = raw_data.decode('utf-8')
-            logger.info(f"✅ Decodificación exitosa")
+            csv_data = raw_data.decode('utf-8', errors='replace')
+            logger.info(f"✅ Decodificación exitosa!")
             sys.stdout.flush()
             
-            logger.info(f"📊 Tamaño de datos recibidos: {len(csv_data)} bytes")
-            logger.info(f"🔍 Primeros 200 caracteres: {csv_data[:200]}")
+            logger.info(f"📊 Tamaño de texto CSV: {len(csv_data)} bytes")
             sys.stdout.flush()
+            
+            # Imprimir primeras líneas
+            lines = csv_data.split('\n')
+            logger.info(f"📄 Total de líneas: {len(lines)}")
+            logger.info(f"🔍 Primeras 5 líneas:")
+            for i, line in enumerate(lines[:5]):
+                logger.info(f"  Línea {i}: {line[:100]}")
+            sys.stdout.flush()
+            
         except Exception as e:
             logger.error(f"❌ Error al decodificar datos: {str(e)}")
             sys.stdout.flush()
